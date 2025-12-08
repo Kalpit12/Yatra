@@ -1,0 +1,67 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+README.md
+DEPLOYMENT_GUIDE.md
+DOCKER_COMMANDS.md
+DOCKER_SETUP.md
+LOCALHOST_SETUP.md
+QUICK_DOCKER_GUIDE.md
+
+# Node modules (will be installed in container)
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Build scripts
+build-and-push.*
+build-all-docker.*
+
+# Database files (use volumes instead)
+*.sql
+*.db
+*.sqlite
+
+# Logs
+*.log
+logs
+
+# Temporary files
+tmp
+temp
+*.tmp
+
+# Test files
+test
+tests
+*.test.js
+*.spec.js
+
+# Coverage
+coverage
+.nyc_output

@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: yatra-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-changeme}
+      MYSQL_DATABASE: ${DB_NAME:-yatra_db}
+      MYSQL_USER: ${DB_USER:-yatra_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-changeme}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - yatra-network
+    restart: unless-stopped
+
+  # Backend API Server
+  backend:
+    build:
+      context: ./yatra-backend
+      dockerfile: Dockerfile
+    container_name: yatra-backend
+    environment:
+      DB_HOST: mysql
+      DB_USER: ${DB_USER:-yatra_user}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      DB_NAME: ${DB_NAME:-yatra_db}
+      DB_PORT: 3306
+      PORT: 3000
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-key}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:80}
+    ports:
+      - "3000:3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - yatra-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend Website
+  frontend:
+    build:
+      context: ./yatra-frontend
+      dockerfile: Dockerfile
+    container_name: yatra-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - yatra-network
+    restart: unless-stopped
+
+  # Admin Panel
+  admin:
+    build:
+      context: ./yatra-admin-frontend
+      dockerfile: Dockerfile
+    container_name: yatra-admin
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - yatra-network
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  yatra-network:
+    driver: bridge
+
