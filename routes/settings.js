@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
+const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
 
-// Get all settings
-router.get('/', async (req, res) => {
+// Get all settings (public read - some settings are public)
+router.get('/', optionalAuth, async (req, res) => {
     try {
         const settings = await query('SELECT * FROM settings');
         
@@ -35,7 +36,8 @@ router.get('/', async (req, res) => {
 });
 
 // Get single setting
-router.get('/:key', async (req, res) => {
+// Get single setting (public read)
+router.get('/:key', optionalAuth, async (req, res) => {
     try {
         const [setting] = await query(
             'SELECT * FROM settings WHERE setting_key = ?',
@@ -67,7 +69,8 @@ router.get('/:key', async (req, res) => {
 });
 
 // Update setting
-router.put('/:key', async (req, res) => {
+// Update single setting (protected - requires admin)
+router.put('/:key', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { value, type } = req.body;
         
@@ -104,7 +107,8 @@ router.put('/:key', async (req, res) => {
 });
 
 // Update multiple settings
-router.put('/', async (req, res) => {
+// Update multiple settings (protected - requires admin)
+router.put('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const settings = req.body;
         

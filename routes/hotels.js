@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
+const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
 
-// Get all hotels
-router.get('/', async (req, res) => {
+// Get all hotels (public read)
+router.get('/', optionalAuth, async (req, res) => {
     try {
         const hotels = await query('SELECT * FROM hotels ORDER BY name ASC');
         res.json(hotels);
@@ -14,7 +15,8 @@ router.get('/', async (req, res) => {
 });
 
 // Get room allotments
-router.get('/allotments', async (req, res) => {
+// Get room allotments (protected - requires authentication)
+router.get('/allotments', authenticateToken, async (req, res) => {
     try {
         const { hotelId, date, travelerId } = req.query;
         
@@ -56,7 +58,8 @@ router.get('/allotments', async (req, res) => {
 });
 
 // Create hotel
-router.post('/', async (req, res) => {
+// Create new hotel (protected - requires admin)
+router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { 
             name, address, city, state, country, lat, lng, phone, email,
@@ -109,7 +112,8 @@ router.post('/', async (req, res) => {
 });
 
 // Create room allotment
-router.post('/allotments', async (req, res) => {
+// Create room allotment (protected - requires admin)
+router.post('/allotments', authenticateToken, requireAdmin, async (req, res) => {
     try {
         console.log('📥 POST /hotels/allotments - Received request body:', JSON.stringify(req.body, null, 2));
         
@@ -169,7 +173,8 @@ router.post('/allotments', async (req, res) => {
 });
 
 // Update room allotment
-router.put('/allotments/:id', async (req, res) => {
+// Update room allotment (protected - requires admin)
+router.put('/allotments/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { floor, room, pairNo } = req.body;
         const allotmentId = parseInt(req.params.id);
@@ -215,7 +220,8 @@ router.put('/allotments/:id', async (req, res) => {
 });
 
 // Delete room allotment
-router.delete('/allotments/:id', async (req, res) => {
+// Delete room allotment (protected - requires admin)
+router.delete('/allotments/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const allotmentId = parseInt(req.params.id);
         
@@ -234,7 +240,8 @@ router.delete('/allotments/:id', async (req, res) => {
 
 // Delete all room allotments for a hotel and date
 // NOTE: This route must come BEFORE router.delete('/:id') to avoid route conflicts
-router.delete('/allotments', async (req, res) => {
+// Delete room allotments by hotel/date (protected - requires admin)
+router.delete('/allotments', authenticateToken, requireAdmin, async (req, res) => {
     try {
         console.log('🗑️ DELETE /hotels/allotments - Path:', req.path, 'Original URL:', req.originalUrl);
         console.log('🗑️ Query params:', req.query);
@@ -274,7 +281,8 @@ router.delete('/allotments', async (req, res) => {
 
 // Delete hotel
 // NOTE: This route must come AFTER /allotments routes to avoid conflicts
-router.delete('/:id', async (req, res) => {
+// Delete hotel (protected - requires admin)
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         console.log('🗑️ DELETE /hotels/:id - Path:', req.path, 'Original URL:', req.originalUrl, 'Params:', req.params, 'Query:', req.query);
         

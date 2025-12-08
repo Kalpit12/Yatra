@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
+const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
 
-// Get all itinerary days
-router.get('/', async (req, res) => {
+// Get all itinerary days (public read)
+router.get('/', optionalAuth, async (req, res) => {
     try {
         const itinerary = await query(`
             SELECT 
@@ -56,7 +57,8 @@ router.get('/', async (req, res) => {
 });
 
 // Get single itinerary day
-router.get('/:id', async (req, res) => {
+// Get single itinerary day (public read)
+router.get('/:id', optionalAuth, async (req, res) => {
     try {
         const [itinerary] = await query(
             'SELECT * FROM itinerary WHERE id = ?',
@@ -91,7 +93,8 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create new itinerary day
-router.post('/', async (req, res) => {
+// Create new itinerary day (protected - requires admin)
+router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const {
             day, date, dateObj, place, city, state, country, lat, lng,
@@ -189,7 +192,8 @@ router.post('/', async (req, res) => {
 });
 
 // Update itinerary day
-router.put('/:id', async (req, res) => {
+// Update itinerary day (protected - requires admin)
+router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const {
             day, date, place, city, state, country, lat, lng,
@@ -236,7 +240,8 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete itinerary day
-router.delete('/:id', async (req, res) => {
+// Delete itinerary day (protected - requires admin)
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         await query('DELETE FROM itinerary WHERE id = ?', [req.params.id]);
         res.json({ message: 'Itinerary day deleted successfully' });

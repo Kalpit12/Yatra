@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
+const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
 
-// Get all check-ins
-router.get('/', async (req, res) => {
+// Get all check-ins (protected - requires authentication)
+router.get('/', authenticateToken, async (req, res) => {
     try {
         const { vehicleId, active, travelerEmail } = req.query;
         
@@ -46,7 +47,8 @@ router.get('/', async (req, res) => {
 });
 
 // Get check-ins for a specific vehicle
-router.get('/vehicle/:vehicleId', async (req, res) => {
+// Get check-ins by vehicle (protected - requires authentication)
+router.get('/vehicle/:vehicleId', authenticateToken, async (req, res) => {
     try {
         const { active } = req.query;
         
@@ -93,7 +95,8 @@ router.get('/vehicle/:vehicleId', async (req, res) => {
 });
 
 // Create check-in
-router.post('/', async (req, res) => {
+// Create check-in (protected - requires authentication, travelers can check themselves in)
+router.post('/', authenticateToken, async (req, res) => {
     try {
         const { vehicleId, travelerEmail, travelerId } = req.body;
         
@@ -138,7 +141,8 @@ router.post('/', async (req, res) => {
 });
 
 // Check out (deactivate check-in)
-router.post('/:id/checkout', async (req, res) => {
+// Checkout (protected - requires authentication)
+router.post('/:id/checkout', authenticateToken, async (req, res) => {
     try {
         await query(`
             UPDATE check_ins 
@@ -154,7 +158,8 @@ router.post('/:id/checkout', async (req, res) => {
 });
 
 // Clear all check-ins for a vehicle
-router.delete('/vehicle/:vehicleId', async (req, res) => {
+// Clear all check-ins for vehicle (protected - requires admin)
+router.delete('/vehicle/:vehicleId', authenticateToken, requireAdmin, async (req, res) => {
     try {
         await query(`
             UPDATE check_ins 

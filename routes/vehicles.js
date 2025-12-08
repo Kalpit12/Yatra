@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
+const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
 
-// Get all vehicles
-router.get('/', async (req, res) => {
+// Get all vehicles (public read, but optional auth for additional info)
+router.get('/', optionalAuth, async (req, res) => {
     try {
         const vehicles = await query(`
             SELECT 
@@ -43,7 +44,8 @@ router.get('/', async (req, res) => {
 });
 
 // Get single vehicle
-router.get('/:id', async (req, res) => {
+// Get single vehicle (public read)
+router.get('/:id', optionalAuth, async (req, res) => {
     try {
         const [vehicle] = await query(
             'SELECT * FROM vehicles WHERE id = ?',
@@ -62,7 +64,8 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create new vehicle
-router.post('/', async (req, res) => {
+// Create new vehicle (protected - requires admin)
+router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const {
             name,
@@ -135,7 +138,8 @@ router.post('/', async (req, res) => {
 });
 
 // Update vehicle
-router.put('/:id', async (req, res) => {
+// Update vehicle (protected - requires admin)
+router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const {
             name, type, capacity, regNo, groupLeaderEmail,
@@ -182,7 +186,8 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete vehicle
-router.delete('/:id', async (req, res) => {
+// Delete vehicle (protected - requires admin)
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         await query('DELETE FROM vehicles WHERE id = ?', [req.params.id]);
         res.json({ message: 'Vehicle deleted successfully' });
@@ -192,8 +197,8 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
-// Update vehicle location (for real-time tracking)
-router.post('/:id/location', async (req, res) => {
+// Update vehicle location (protected - requires authentication, can be group leader or admin)
+router.post('/:id/location', authenticateToken, async (req, res) => {
     try {
         const { lat, lng } = req.body;
         

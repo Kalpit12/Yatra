@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
+const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
 
-// Get all posts (with filters)
-router.get('/', async (req, res) => {
+// Get all posts (public read - approved posts only for non-authenticated users)
+router.get('/', optionalAuth, async (req, res) => {
     try {
         const { approved, section, author, limit, offset } = req.query;
         
@@ -17,7 +18,12 @@ router.get('/', async (req, res) => {
         `;
         const params = [];
         
-        if (approved !== undefined) {
+        // If not authenticated or not admin, only show approved posts
+        if (!req.user || !req.user.isAdmin) {
+            sql += ' AND p.approved = ?';
+            params.push(true);
+        } else if (approved !== undefined) {
+            // Admins can filter by approval status
             sql += ' AND p.approved = ?';
             params.push(approved === 'true');
         }
@@ -202,8 +208,8 @@ router.get('/', async (req, res) => {
     }
 });
 
-// Get single post
-router.get('/:id', async (req, res) => {
+// Get single post (public read - but check approval for non-authenticated users)
+router.get('/:id', optionalAuth, async (req, res) => {
     try {
         const [post] = await query(
             'SELECT * FROM posts WHERE id = ?',
@@ -212,6 +218,13 @@ router.get('/:id', async (req, res) => {
         
         if (!post) {
             return res.status(404).json({ error: 'Post not found' });
+        }
+        
+        // If not authenticated or not admin, only show approved posts
+        if (!req.user || !req.user.isAdmin) {
+            if (!post.approved) {
+                return res.status(403).json({ error: 'Post not available' });
+            }
         }
         
         // Get media with type information
@@ -254,8 +267,8 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-// Create new post
-router.post('/', async (req, res) => {
+// Create new post (protected - requires authentication, users can create their own posts)
+router.post('/', authenticateToken, async (req, res) => {
     try {
         const {
             authorEmail, authorName, authorImage, place, location,
@@ -263,6 +276,15 @@ router.post('/', async (req, res) => {
             // Support legacy field names
             email, author
         } = req.body;
+        
+        // Ensure the post is created by the authenticated user (unless admin)
+        const postAuthorEmail = authorEmail || email || req.user.email;
+        if (!req.user.isAdmin && postAuthorEmail !== req.user.email) {
+            return res.status(403).json({ 
+                error: 'Access denied',
+                message: 'You can only create posts for yourself'
+            });
+        }
         
         // Helper function to convert undefined to null
         const toNull = (val) => (val === undefined || val === '') ? null : val;
@@ -480,9 +502,22 @@ router.post('/', async (req, res) => {
     }
 });
 
-// Update post
-router.put('/:id', async (req, res) => {
+// Update post (protected - users can update own posts, admins can update any)
+router.put('/:id', authenticateToken, async (req, res) => {
     try {
+        // Check if user owns the post or is admin
+        const [post] = await query('SELECT author_email FROM posts WHERE id = ?', [req.params.id]);
+        if (!post) {
+            return res.status(404).json({ error: 'Post not found' });
+        }
+        
+        if (!req.user.isAdmin && post.author_email !== req.user.email) {
+            return res.status(403).json({ 
+                error: 'Access denied',
+                message: 'You can only update your own posts'
+            });
+        }
+        
         const {
             place, location, section, description, lat, lng,
             media, tags, approved
@@ -498,7 +533,11 @@ router.put('/:id', async (req, res) => {
         if (description !== undefined) { updateFields.push('description = ?'); updateValues.push(description); }
         if (lat !== undefined) { updateFields.push('lat = ?'); updateValues.push(lat); }
         if (lng !== undefined) { updateFields.push('lng = ?'); updateValues.push(lng); }
-        if (approved !== undefined) { updateFields.push('approved = ?'); updateValues.push(approved); }
+        // Only admins can change approval status
+        if (approved !== undefined && req.user.isAdmin) { 
+            updateFields.push('approved = ?'); 
+            updateValues.push(approved); 
+        }
         
         if (updateFields.length > 0) {
             updateValues.push(req.params.id);
@@ -542,7 +581,8 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete post
-router.delete('/:id', async (req, res) => {
+// Delete post (protected - users can delete own posts, admins can delete any)
+router.delete('/:id', authenticateToken, async (req, res) => {
     try {
         await query('DELETE FROM posts WHERE id = ?', [req.params.id]);
         res.json({ message: 'Post deleted successfully' });
@@ -553,7 +593,8 @@ router.delete('/:id', async (req, res) => {
 });
 
 // Approve/Disapprove post
-router.patch('/:id/approve', async (req, res) => {
+// Approve post (protected - requires admin)
+router.patch('/:id/approve', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { approved } = req.body;
         await query(

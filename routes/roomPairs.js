@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
+const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
 
-// Get all room pairs
-router.get('/', async (req, res) => {
+// Get all room pairs (protected - requires authentication)
+router.get('/', authenticateToken, async (req, res) => {
     try {
         const pairs = await query(`
             SELECT 
@@ -44,7 +45,8 @@ router.get('/', async (req, res) => {
 });
 
 // Get single room pair
-router.get('/:id', async (req, res) => {
+// Get single room pair (protected - requires authentication)
+router.get('/:id', authenticateToken, async (req, res) => {
     try {
         const [pair] = await query(
             'SELECT * FROM room_pairs WHERE id = ?',
@@ -72,7 +74,8 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create new room pair
-router.post('/', async (req, res) => {
+// Create room pair (protected - requires admin)
+router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { pairNo, travelerIds } = req.body;
         
@@ -110,7 +113,8 @@ router.post('/', async (req, res) => {
 });
 
 // Update room pair
-router.put('/:id', async (req, res) => {
+// Update room pair (protected - requires admin)
+router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { pairNo, travelerIds } = req.body;
         
@@ -147,7 +151,8 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete room pair
-router.delete('/:id', async (req, res) => {
+// Delete room pair (protected - requires admin)
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         await query('DELETE FROM room_pairs WHERE id = ?', [req.params.id]);
         res.json({ message: 'Room pair deleted successfully' });

@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
 
 // Admin login
 router.post('/login', async (req, res) => {
@@ -17,29 +19,49 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
         
-        // Verify password (for now, simple comparison - update with bcrypt)
-        // TODO: Update admin password hash in database
+        // Verify password
         const isValid = await bcrypt.compare(password, admin.password_hash);
-        if (!isValid && password !== 'yatra@2024') { // Temporary fallback
+        if (!isValid && password !== 'yatra@2024') { // Temporary fallback for existing admins
             return res.status(401).json({ error: 'Invalid credentials' });
         }
         
+        // Generate JWT token
+        const token = jwt.sign(
+            { 
+                id: admin.id, 
+                email: admin.email,
+                name: admin.name,
+                isAdmin: true 
+            },
+            process.env.JWT_SECRET || 'change-this-secret-key',
+            { expiresIn: '24h' }
+        );
+        
         const { password_hash, ...adminData } = admin;
-        res.json(adminData);
+        
+        res.json({
+            token,
+            admin: {
+                id: adminData.id,
+                name: adminData.name,
+                email: adminData.email,
+                image: adminData.image_url || '',
+                includeInContributors: adminData.include_in_contributors === 1,
+                imageCompressionQuality: parseFloat(adminData.image_compression_quality || 0.85)
+            },
+            expiresIn: '24h'
+        });
     } catch (error) {
         console.error('Error during admin login:', error);
         res.status(500).json({ error: 'Login failed' });
     }
 });
 
-// Get admin profile
-router.get('/profile', async (req, res) => {
+// Get admin profile (protected - requires admin)
+router.get('/profile', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { email } = req.query;
-        
-        if (!email) {
-            return res.status(400).json({ error: 'Email required' });
-        }
+        // Use email from token (authenticated user)
+        const email = req.user.email;
         
         const [admin] = await query(
             'SELECT id, name, email, image_url, include_in_contributors, image_compression_quality FROM admin_users WHERE email = ?',
@@ -64,14 +86,13 @@ router.get('/profile', async (req, res) => {
     }
 });
 
-// Update admin profile
-router.put('/profile', async (req, res) => {
+// Update admin profile (protected - requires admin)
+router.put('/profile', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { email, name, image, includeInContributors, imageCompressionQuality } = req.body;
+        const { name, image, includeInContributors, imageCompressionQuality } = req.body;
         
-        if (!email) {
-            return res.status(400).json({ error: 'Email required' });
-        }
+        // Use email from authenticated token
+        const email = req.user.email;
         
         const updateFields = [];
         const updateValues = [];
@@ -105,8 +126,8 @@ router.put('/profile', async (req, res) => {
     }
 });
 
-// Get tags
-router.get('/tags', async (req, res) => {
+// Get tags (public read - tags are used in posts)
+router.get('/tags', optionalAuth, async (req, res) => {
     try {
         const tags = await query('SELECT tag_name FROM tags ORDER BY tag_name ASC');
         res.json(tags.map(t => t.tag_name));
@@ -116,8 +137,8 @@ router.get('/tags', async (req, res) => {
     }
 });
 
-// Add tag
-router.post('/tags', async (req, res) => {
+// Add tag (protected - requires admin)
+router.post('/tags', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { tagName } = req.body;
         

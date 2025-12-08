@@ -2,9 +2,11 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
 
-// Get all travelers
-router.get('/', async (req, res) => {
+// Get all travelers (protected - requires admin authentication)
+router.get('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const travelers = await query(`
             SELECT 
@@ -52,31 +54,56 @@ router.get('/', async (req, res) => {
     }
 });
 
-// Get single traveler by ID
-router.get('/:id', async (req, res) => {
+// Get single traveler by ID (protected - admin or own profile)
+router.get('/:id', authenticateToken, async (req, res) => {
     try {
+        const travelerId = parseInt(req.params.id);
+        
+        // Allow access if admin or if accessing own profile
+        if (!req.user.isAdmin && req.user.id !== travelerId) {
+            return res.status(403).json({ 
+                error: 'Access denied',
+                message: 'You can only access your own profile'
+            });
+        }
+        
         const [traveler] = await query(
             'SELECT * FROM travelers WHERE id = ?',
-            [req.params.id]
+            [travelerId]
         );
         
         if (!traveler) {
             return res.status(404).json({ error: 'Traveler not found' });
         }
         
-        res.json(traveler);
+        const { password_hash, ...travelerData } = traveler;
+        res.json({
+            ...travelerData,
+            name: `${traveler.first_name} ${traveler.middle_name ? traveler.middle_name + ' ' : ''}${traveler.last_name}`.trim(),
+            image: traveler.image_url || ''
+        });
     } catch (error) {
         console.error('Error fetching traveler:', error);
         res.status(500).json({ error: 'Failed to fetch traveler' });
     }
 });
 
-// Get traveler by email (for login)
-router.get('/email/:email', async (req, res) => {
+// Get traveler by email (protected - users can only access their own data, admins can access any)
+router.get('/email/:email', authenticateToken, async (req, res) => {
     try {
+        const email = req.params.email;
+        
+        // Users can only access their own data unless they're admin
+        if (!req.user.isAdmin && req.user.email !== email) {
+            return res.status(403).json({ 
+                error: 'Access denied',
+                message: 'You can only access your own information'
+            });
+        }
+        
         const [traveler] = await query(
             'SELECT id, email, password_hash, first_name, last_name, image_url FROM travelers WHERE email = ?',
-            [req.params.email]
+            [email]
         );
         
         if (!traveler) {
@@ -96,8 +123,8 @@ router.get('/email/:email', async (req, res) => {
     }
 });
 
-// Create new traveler
-router.post('/', async (req, res) => {
+// Create new traveler (protected - requires admin authentication)
+router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const {
             tirthId, firstName, middleName, lastName, email, password,
@@ -138,8 +165,8 @@ router.post('/', async (req, res) => {
     }
 });
 
-// Update traveler
-router.put('/:id', async (req, res) => {
+// Update traveler (protected - admin or own profile)
+router.put('/:id', authenticateToken, async (req, res) => {
     try {
         const {
             firstName, middleName, lastName, email, password,
@@ -197,8 +224,8 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-// Delete traveler
-router.delete('/:id', async (req, res) => {
+// Delete traveler (protected - requires admin authentication)
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         await query('DELETE FROM travelers WHERE id = ?', [req.params.id]);
         res.json({ message: 'Traveler deleted successfully' });
@@ -208,10 +235,14 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
-// Login traveler (verify password)
+// Login traveler (verify password and generate token)
 router.post('/login', async (req, res) => {
     try {
         const { email, password } = req.body;
+        
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Email and password required' });
+        }
         
         const [traveler] = await query(
             'SELECT * FROM travelers WHERE email = ?',
@@ -228,12 +259,27 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid email or password' });
         }
         
+        // Generate JWT token
+        const token = jwt.sign(
+            { 
+                id: traveler.id, 
+                email: traveler.email,
+                isAdmin: false 
+            },
+            process.env.JWT_SECRET || 'change-this-secret-key',
+            { expiresIn: '7d' } // Travelers get 7 days, admins get 24h
+        );
+        
         // Return traveler data (without password)
         const { password_hash, ...travelerData } = traveler;
         res.json({
-            ...travelerData,
-            name: `${traveler.first_name} ${traveler.middle_name ? traveler.middle_name + ' ' : ''}${traveler.last_name}`.trim(),
-            image: traveler.image_url || ''
+            token,
+            traveler: {
+                ...travelerData,
+                name: `${traveler.first_name} ${traveler.middle_name ? traveler.middle_name + ' ' : ''}${traveler.last_name}`.trim(),
+                image: traveler.image_url || ''
+            },
+            expiresIn: '7d'
         });
     } catch (error) {
         console.error('Error during login:', error);
