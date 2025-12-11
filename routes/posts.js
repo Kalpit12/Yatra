@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
-const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
-// Get all posts (public read - approved posts only for non-authenticated users)
-router.get('/', optionalAuth, async (req, res) => {
+// Get all posts (protected read)
+router.get('/', authenticateToken, async (req, res) => {
     try {
         const { approved, section, author, limit, offset } = req.query;
         
@@ -18,14 +18,21 @@ router.get('/', optionalAuth, async (req, res) => {
         `;
         const params = [];
         
-        // If not authenticated or not admin, only show approved posts
+        // If not admin, only show approved posts
         if (!req.user || !req.user.isAdmin) {
             sql += ' AND p.approved = ?';
             params.push(true);
-        } else if (approved !== undefined) {
-            // Admins can filter by approval status
-            sql += ' AND p.approved = ?';
-            params.push(approved === 'true');
+            console.log('📊 Posts API: Non-admin request - filtering to approved posts only');
+        } else {
+            console.log('📊 Posts API: Admin request detected - will return all posts');
+            if (approved !== undefined) {
+                // Admins can filter by approval status
+                sql += ' AND p.approved = ?';
+                params.push(approved === 'true');
+                console.log(`📊 Posts API: Admin filtered by approved=${approved}`);
+            } else {
+                console.log('📊 Posts API: Admin request - returning ALL posts (approved and unapproved)');
+            }
         }
         if (section) {
             sql += ' AND p.section_id = ?';
@@ -209,7 +216,7 @@ router.get('/', optionalAuth, async (req, res) => {
 });
 
 // Get single post (public read - but check approval for non-authenticated users)
-router.get('/:id', optionalAuth, async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
     try {
         const [post] = await query(
             'SELECT * FROM posts WHERE id = ?',
@@ -580,10 +587,22 @@ router.put('/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// Delete post
 // Delete post (protected - users can delete own posts, admins can delete any)
 router.delete('/:id', authenticateToken, async (req, res) => {
     try {
+        // Check if user owns the post or is admin
+        const [post] = await query('SELECT author_email FROM posts WHERE id = ?', [req.params.id]);
+        if (!post) {
+            return res.status(404).json({ error: 'Post not found' });
+        }
+        
+        if (!req.user.isAdmin && post.author_email !== req.user.email) {
+            return res.status(403).json({ 
+                error: 'Access denied',
+                message: 'You can only delete your own posts'
+            });
+        }
+        
         await query('DELETE FROM posts WHERE id = ?', [req.params.id]);
         res.json({ message: 'Post deleted successfully' });
     } catch (error) {

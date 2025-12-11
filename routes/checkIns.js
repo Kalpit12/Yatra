@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
-const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
-// Get all check-ins (protected - requires authentication)
-router.get('/', authenticateToken, async (req, res) => {
+// Get all check-ins (admin only to avoid data leakage)
+router.get('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { vehicleId, active, travelerEmail } = req.query;
         
@@ -46,9 +46,8 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 });
 
-// Get check-ins for a specific vehicle
-// Get check-ins by vehicle (protected - requires authentication)
-router.get('/vehicle/:vehicleId', authenticateToken, async (req, res) => {
+// Get check-ins by vehicle (admin only to avoid data leakage)
+router.get('/vehicle/:vehicleId', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { active } = req.query;
         
@@ -94,8 +93,7 @@ router.get('/vehicle/:vehicleId', authenticateToken, async (req, res) => {
     }
 });
 
-// Create check-in
-// Create check-in (protected - requires authentication, travelers can check themselves in)
+// Create check-in (protected - travelers can only check themselves in)
 router.post('/', authenticateToken, async (req, res) => {
     try {
         const { vehicleId, travelerEmail, travelerId } = req.body;
@@ -104,6 +102,14 @@ router.post('/', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Vehicle ID and traveler email required' });
         }
         
+        // Only allow self check-in unless admin
+        if (!req.user.isAdmin && req.user.email !== travelerEmail) {
+            return res.status(403).json({
+                error: 'Access denied',
+                message: 'You can only check in yourself'
+            });
+        }
+
         // Check if already checked in
         const [existing] = await query(`
             SELECT * FROM check_ins 
@@ -140,10 +146,25 @@ router.post('/', authenticateToken, async (req, res) => {
     }
 });
 
-// Check out (deactivate check-in)
-// Checkout (protected - requires authentication)
+// Checkout (protected - only admin or owner)
 router.post('/:id/checkout', authenticateToken, async (req, res) => {
     try {
+        const [checkIn] = await query(
+            'SELECT traveler_email FROM check_ins WHERE id = ?',
+            [req.params.id]
+        );
+
+        if (!checkIn) {
+            return res.status(404).json({ error: 'Check-in not found' });
+        }
+
+        if (!req.user.isAdmin && checkIn.traveler_email !== req.user.email) {
+            return res.status(403).json({
+                error: 'Access denied',
+                message: 'You can only check out yourself'
+            });
+        }
+
         await query(`
             UPDATE check_ins 
             SET active = 0, checked_out_at = NOW()

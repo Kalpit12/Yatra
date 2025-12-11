@@ -12,7 +12,17 @@ const API_BASE = (() => {
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
         return 'http://localhost:3000/api';
     }
-    // Production backend URL
+    
+    // For aksharjobs.com domain, use the backend API
+    // Option 1: If backend is at aksharjobs.com/api (same domain)
+    if (window.location.hostname === 'aksharjobs.com' || window.location.hostname.includes('aksharjobs.com')) {
+        // Use same domain with /api path, or specify your backend URL
+        // If backend is on same server: return `${window.location.protocol}//${window.location.hostname}/api`;
+        // If backend is separate: return 'https://your-backend-url.com/api';
+        return `${window.location.protocol}//${window.location.hostname}/api`;
+    }
+    
+    // Fallback: Production backend URL (Railway or other)
     return 'https://yatra-production.up.railway.app/api';
 })();
 let API_CACHE = {}; // Cache for offline support

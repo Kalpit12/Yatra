@@ -3,7 +3,7 @@ const router = express.Router();
 const { query } = require('../config/database');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 // Get all travelers (protected - requires admin authentication)
 router.get('/', authenticateToken, requireAdmin, async (req, res) => {
@@ -102,7 +102,7 @@ router.get('/email/:email', authenticateToken, async (req, res) => {
         }
         
         const [traveler] = await query(
-            'SELECT id, email, password_hash, first_name, last_name, image_url FROM travelers WHERE email = ?',
+            'SELECT id, email, first_name, last_name, image_url FROM travelers WHERE email = ?',
             [email]
         );
         
@@ -113,7 +113,6 @@ router.get('/email/:email', authenticateToken, async (req, res) => {
         res.json({
             id: traveler.id,
             email: traveler.email,
-            passwordHash: traveler.password_hash,
             name: `${traveler.first_name} ${traveler.last_name}`,
             image: traveler.image_url || ''
         });
@@ -168,6 +167,16 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
 // Update traveler (protected - admin or own profile)
 router.put('/:id', authenticateToken, async (req, res) => {
     try {
+        const travelerId = parseInt(req.params.id);
+
+        // Only admins or the owner can update this traveler
+        if (!req.user.isAdmin && req.user.id !== travelerId) {
+            return res.status(403).json({
+                error: 'Access denied',
+                message: 'You can only update your own profile'
+            });
+        }
+
         const {
             firstName, middleName, lastName, email, password,
             phone, city, country, center, birthDate, age, passportNo,
@@ -210,7 +219,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'No fields to update' });
         }
         
-        updateValues.push(req.params.id);
+        updateValues.push(travelerId);
         
         await query(
             `UPDATE travelers SET ${updateFields.join(', ')} WHERE id = ?`,
@@ -259,6 +268,11 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid email or password' });
         }
         
+        // Check JWT secret is configured
+        if (!process.env.JWT_SECRET) {
+            return res.status(500).json({ error: 'Server configuration error' });
+        }
+        
         // Generate JWT token
         const token = jwt.sign(
             { 
@@ -266,7 +280,7 @@ router.post('/login', async (req, res) => {
                 email: traveler.email,
                 isAdmin: false 
             },
-            process.env.JWT_SECRET || 'change-this-secret-key',
+            process.env.JWT_SECRET,
             { expiresIn: '7d' } // Travelers get 7 days, admins get 24h
         );
         

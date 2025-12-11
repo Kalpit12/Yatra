@@ -15,7 +15,11 @@ const authenticateToken = (req, res, next) => {
         });
     }
     
-    jwt.verify(token, process.env.JWT_SECRET || 'change-this-secret-key', (err, user) => {
+    if (!process.env.JWT_SECRET) {
+        return res.status(500).json({ error: 'Server configuration error' });
+    }
+    
+    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
         if (err) {
             return res.status(403).json({ 
                 error: 'Invalid or expired token',
@@ -55,7 +59,11 @@ const optionalAuth = (req, res, next) => {
     const token = authHeader && authHeader.split(' ')[1];
     
     if (token) {
-        jwt.verify(token, process.env.JWT_SECRET || 'change-this-secret-key', (err, user) => {
+        if (!process.env.JWT_SECRET) {
+            return next();
+        }
+        
+        jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
             if (!err && user) {
                 req.user = user;
             }

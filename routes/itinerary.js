@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
-const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
-// Get all itinerary days (public read)
-router.get('/', optionalAuth, async (req, res) => {
+// Get all itinerary days (protected read)
+router.get('/', authenticateToken, async (req, res) => {
     try {
         const itinerary = await query(`
             SELECT 
@@ -56,9 +56,8 @@ router.get('/', optionalAuth, async (req, res) => {
     }
 });
 
-// Get single itinerary day
-// Get single itinerary day (public read)
-router.get('/:id', optionalAuth, async (req, res) => {
+// Get single itinerary day (protected read)
+router.get('/:id', authenticateToken, async (req, res) => {
     try {
         const [itinerary] = await query(
             'SELECT * FROM itinerary WHERE id = ?',

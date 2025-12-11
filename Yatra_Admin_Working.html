@@ -16,8 +16,7 @@
        - Then open: http://localhost:5500/Yatra_Admin_Working.html
     
     3. Login credentials:
-       - Username: admin
-       - Password: yatra@2024
+       - Provided securely by the administrator (do not hardcode)
     
     4. Required files in same directory:
        - api-integration.js (API connection to backend)
@@ -878,8 +877,27 @@
         console.log('✅ All fixes applied - handleAddTraveler should work now!');
         // ============================================
         
+        // Hard-disable all localStorage usage (security: no client-side persistence)
+        (function disableLocalStorage() {
+            const nullStorage = {
+                getItem: () => null,
+                setItem: () => {},
+                removeItem: () => {},
+                clear: () => {}
+            };
+            try {
+                Object.defineProperty(window, 'localStorage', {
+                    value: nullStorage,
+                    writable: false,
+                    configurable: false
+                });
+            } catch (e) {
+                try { window.localStorage = nullStorage; } catch (err) {}
+            }
+        })();
+        
         // Simple login function - defined early to ensure it's always available
-        function handleAdminLogin(event) {
+        async function handleAdminLogin(event) {
             if (event) event.preventDefault();
             
             var username = document.getElementById('adminUsername');
@@ -893,55 +911,54 @@
             var user = username.value.trim();
             var pass = password.value;
             
-            // Simple login check
-            if (user === 'admin' && pass === 'yatra@2024') {
-                // Hide login page
-                var loginPage = document.getElementById('loginPage');
-                if (loginPage) loginPage.style.display = 'none';
-                
-                // Show dashboard
-                var dashboard = document.getElementById('dashboard');
-                if (dashboard) dashboard.classList.add('active');
-                
-                // Save login state to sessionStorage (survives page refresh)
+            // Try API login first
+            if (typeof api !== 'undefined' && api.adminLogin) {
                 try {
-                    sessionStorage.setItem('adminLoggedIn', 'true');
-                    sessionStorage.setItem('adminLoginTime', Date.now().toString());
-                    console.log('✅ Login state saved to sessionStorage');
-                } catch (e) {
-                    console.warn('Could not save login state:', e);
+                    const result = await api.adminLogin(user, pass);
+                    if (result && result.token) {
+                        // Persist auth only in sessionStorage
+                        sessionStorage.setItem('adminLoggedIn', 'true');
+                        sessionStorage.setItem('adminLoginTime', Date.now().toString());
+                        
+                        // Hide login page
+                        var loginPage = document.getElementById('loginPage');
+                        if (loginPage) loginPage.style.display = 'none';
+                        
+                        // Show dashboard
+                        var dashboard = document.getElementById('dashboard');
+                        if (dashboard) dashboard.classList.add('active');
+                        
+                        // Set admin name
+                        var adminName = document.getElementById('adminName');
+                        if (adminName) adminName.textContent = result.admin.name || 'Admin';
+                        
+                        // Update dashboard
+                        if (typeof updateDashboard === 'function') {
+                            updateDashboard();
+                        }
+                        
+                        // Load travelers table after login
+                        setTimeout(() => {
+                            console.log('🔄 Loading travelers after login...');
+                            if (typeof loadTravelersTable === 'function') {
+                                loadTravelersTable();
+                            }
+                            if (typeof showSection === 'function') {
+                                showSection('overview');
+                            }
+                        }, 300);
+                        
+                        return true;
+                    }
+                } catch (error) {
+                    console.error('API login failed:', error);
+                    alert('Login failed: ' + (error.message || 'Invalid credentials'));
+                    return false;
                 }
-                
-                // Set admin name
-                var adminName = document.getElementById('adminName');
-                if (adminName) adminName.textContent = 'Admin';
-                
-                // Try to update dashboard if function exists
-                try {
-                    if (typeof updateDashboard === 'function') {
-                        updateDashboard();
-                    }
-                } catch(e) {
-                    console.warn('Dashboard update skipped:', e);
-                }
-                
-                // Load travelers table after login
-                setTimeout(() => {
-                    console.log('🔄 Loading travelers after login...');
-                    if (typeof loadTravelersTable === 'function') {
-                        loadTravelersTable();
-                    }
-                    // Show overview section by default
-                    if (typeof showSection === 'function') {
-                        showSection('overview');
-                    }
-                }, 300);
-                
-                return true;
-            } else {
-                alert('Invalid credentials!\n\nUsername: admin\nPassword: yatra@2024');
-                return false;
             }
+            
+            alert('Invalid credentials');
+                return false;
         }
         
         // ============================================
@@ -2392,7 +2409,7 @@
                     if (dashboard) {
                         dashboard.classList.remove('active');
                     }
-                    alert('Please login first to add travelers.\n\nUsername: admin\nPassword: yatra@2024');
+                    alert('Please login first with your admin credentials to add travelers.');
                     return false;
                 }
                 
@@ -3776,11 +3793,12 @@
     <div id="sectionModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                Add New Section
+                <span id="sectionModalTitle">Add New Section</span>
                 <span class="close-modal" onclick="closeSectionModal()">&times;</span>
             </div>
             <div class="modal-body">
                 <form onsubmit="handleAddSection(event)">
+                    <input type="hidden" id="sectionId">
                     <div class="form-group">
                         <label>Section Name</label>
                         <input type="text" id="sectionName" required placeholder="E.g., Temples, Food, Travel">
@@ -3789,7 +3807,7 @@
                         <label>Description</label>
                         <textarea id="sectionDescription" required placeholder="Brief description of this section"></textarea>
                     </div>
-                    <button type="submit" class="submit-btn">Add Section</button>
+                    <button type="submit" class="submit-btn" id="sectionSubmitBtn">Add Section</button>
                 </form>
             </div>
         </div>
@@ -4322,27 +4340,7 @@
             });
         }
 
-        // Simple password hashing (use proper backend auth in production)
-        function hashPassword(password) {
-            let hash = 0;
-            const str = password + 'yatra_salt_2024'; // Add salt
-            for (let i = 0; i < str.length; i++) {
-                const char = str.charCodeAt(i);
-                hash = ((hash << 5) - hash) + char;
-                hash = hash & hash;
-            }
-            return Math.abs(hash).toString(16);
-        }
-
         // ==================== END SECURITY & UTILITY FUNCTIONS ====================
-
-        // Admin credentials (hashed)
-        // Hash of password: yatra@2024
-        const adminPasswordHash = 'e7c9f3c2a8b4d1e6';
-        const adminCredentials = {
-            username: 'admin',
-            passwordHash: adminPasswordHash
-        };
 
         // Toggle password visibility
         function togglePasswordVisibility(fieldId, button) {
@@ -5369,11 +5367,22 @@
             }, 1000);
         });
 
+        // ✅ Track notified post IDs to prevent duplicate notifications (global scope)
+        window.notifiedPostIds = window.notifiedPostIds || new Set();
+        const notifiedPostIds = window.notifiedPostIds;
+        
         // ✅ Monitor for new traveler posts with notifications
         setInterval(() => {
             const newPosts = safeGetFromStorage('posts', []);
             
-            if (JSON.stringify(posts) !== JSON.stringify(newPosts)) {
+            // Compare by IDs and length to avoid false positives from object reference changes
+            const oldPostIds = new Set(posts.map(p => p.id));
+            const newPostIds = new Set(newPosts.map(p => p.id));
+            const postsChanged = oldPostIds.size !== newPostIds.size || 
+                                [...oldPostIds].some(id => !newPostIds.has(id)) ||
+                                [...newPostIds].some(id => !oldPostIds.has(id));
+            
+            if (postsChanged) {
                 const previousPosts = [...posts];
                 const oldCount = posts.length;
                 posts = newPosts;
@@ -5383,10 +5392,20 @@
                 newPosts.forEach(newPost => {
                     const oldPost = previousPosts.find(p => p.id === newPost.id);
                     
-                    if (!oldPost && !newPost.approved && !newPost.isPrivate) {
+                    // Only notify if: post is new, unapproved, public, and hasn't been notified yet
+                    if (!oldPost && !newPost.approved && !newPost.isPrivate && !notifiedPostIds.has(newPost.id)) {
                         // New public post awaiting approval (exclude private posts)
                         console.log('🆕 New traveler post received:', newPost.place);
                         showAdminNotification(newPost);
+                        notifiedPostIds.add(newPost.id); // Mark as notified
+                    }
+                });
+                
+                // Clean up notified IDs for posts that no longer exist or have been approved
+                notifiedPostIds.forEach(id => {
+                    const post = newPosts.find(p => p.id === id);
+                    if (!post || post.approved) {
+                        notifiedPostIds.delete(id); // Remove if post is gone or approved
                     }
                 });
                 
@@ -5476,7 +5495,7 @@
         // Login function (backup - early version should be used, but this provides fallback)
         // This version is more robust and handles errors gracefully
         if (typeof handleAdminLogin === 'undefined' || handleAdminLogin.toString().indexOf('Simple login function') === -1) {
-        function handleAdminLogin(event) {
+        async function handleAdminLogin(event) {
                 console.log('Login attempt started (backup function)');
                 if (event) event.preventDefault();
                 
@@ -5495,54 +5514,56 @@
                     
                     console.log('Login attempt:', username, password ? '***' : '(empty)');
 
-            if (username === 'admin' && password === 'yatra@2024') {
-                        console.log('Credentials valid, attempting login...');
-                        
-                        const loginPage = document.getElementById('loginPage');
-                        const dashboard = document.getElementById('dashboard');
-                        
-                        if (loginPage) loginPage.style.display = 'none';
-                        if (dashboard) dashboard.classList.add('active');
-                        
-                        // Save login state to sessionStorage (survives page refresh)
+                    // Try API login first
+                    if (typeof api !== 'undefined' && api.adminLogin) {
                         try {
-                            sessionStorage.setItem('adminLoggedIn', 'true');
-                            sessionStorage.setItem('adminLoginTime', Date.now().toString());
-                            console.log('✅ Login state saved to sessionStorage');
-                        } catch (e) {
-                            console.warn('Could not save login state:', e);
+                            const result = await api.adminLogin(username, password);
+                            if (result && result.token) {
+                                // Store admin data with token
+                                localStorage.setItem('adminData', JSON.stringify({
+                                    token: result.token,
+                                    email: result.admin.email,
+                                    name: result.admin.name,
+                                    id: result.admin.id,
+                                    isAdmin: true
+                                }));
+                                
+                                localStorage.setItem('adminProfile', JSON.stringify(result.admin));
+                                sessionStorage.setItem('adminLoggedIn', 'true');
+                                sessionStorage.setItem('adminLoginTime', Date.now().toString());
+                                
+                                const loginPage = document.getElementById('loginPage');
+                                const dashboard = document.getElementById('dashboard');
+                                
+                                if (loginPage) loginPage.style.display = 'none';
+                                if (dashboard) dashboard.classList.add('active');
+                                
+                                const adminNameEl = document.getElementById('adminName');
+                                if (adminNameEl) adminNameEl.textContent = result.admin.name || 'Admin';
+                                
+                                if (typeof updateDashboard === 'function') {
+                                    updateDashboard();
+                                }
+                                
+                                // Load travelers table after login
+                                setTimeout(() => {
+                                    if (typeof loadTravelersTable === 'function') {
+                                        loadTravelersTable();
+                                    }
+                                }, 300);
+                                
+                                return true;
+                            }
+                        } catch (error) {
+                            console.error('API login failed:', error);
+                            alert('Login failed: ' + (error.message || 'Invalid credentials'));
+                            return false;
                         }
-                        
-                        const adminNameEl = document.getElementById('adminName');
-                        if (adminNameEl) adminNameEl.textContent = 'Admin';
-                        
-                        try {
-                            if (typeof updateDashboard === 'function') {
-                updateDashboard();
-                            }
-                        } catch (dashboardError) {
-                            console.warn('Dashboard update failed:', dashboardError);
-                        }
-                        
-                        // Load travelers table after login
-                        setTimeout(() => {
-                            console.log('🔄 Loading travelers after login (backup)...');
-                            if (typeof loadTravelersTable === 'function') {
-                                loadTravelersTable();
-                            }
-                            // Show overview section by default
-                            if (typeof showSection === 'function') {
-                                showSection('overview');
-                            }
-                        }, 300);
-                        
-                        console.log('Login successful');
-                        return true;
-            } else {
-                        console.log('Invalid credentials');
-                        alert('Invalid credentials!\n\nUsername: admin\nPassword: yatra@2024');
-                        return false;
                     }
+
+                    console.warn('Login blocked: invalid credentials supplied');
+                    alert('Login failed: invalid credentials');
+                        return false;
                 } catch (error) {
                     console.error('Login error:', error);
                     alert('Login failed: ' + error.message);
@@ -5724,8 +5745,30 @@
         }
 
         // Update Dashboard
-        function updateDashboard() {
+        async function updateDashboard() {
             try {
+                // Fetch fresh posts from API for accurate dashboard stats (especially for pending approvals)
+                try {
+                    if (typeof api !== 'undefined' && api.getPosts) {
+                        // Clear cache to ensure fresh data
+                        if (api.clearCacheFor) {
+                            api.clearCacheFor('/posts');
+                        }
+                        // Fetch all posts (admin should see all, including unapproved)
+                        const freshPosts = await api.getPosts({});
+                        if (freshPosts && Array.isArray(freshPosts)) {
+                            posts = freshPosts;
+                            // Update localStorage with fresh data
+                            if (typeof safeSetToStorage === 'function') {
+                                safeSetToStorage('posts', posts);
+                            }
+                            console.log('📊 Dashboard: Loaded fresh posts from API -', posts.length, 'total');
+                        }
+                    }
+                } catch (apiError) {
+                    console.warn('⚠️ Could not fetch fresh posts for dashboard, using cached data:', apiError.message);
+                }
+                
                 // Ensure posts and travelers are defined (fallback to empty arrays if storage blocked)
                 const safePosts = (typeof posts !== 'undefined' && Array.isArray(posts)) ? posts : [];
                 const safeTravelers = (typeof travelers !== 'undefined' && Array.isArray(travelers)) ? travelers : [];
@@ -5764,9 +5807,12 @@
                 updateElement('totalLocations', locations);
                 updateElement('totalTravelers', finalTravelers.length);
                 updateElement('totalPosts', publicPosts.length);
-                updateElement('pendingPosts', publicPosts.filter(p => !p.approved).length);
+                
+                const pendingCount = publicPosts.filter(p => !p.approved).length;
+                updateElement('pendingPosts', pendingCount);
+                console.log('📊 Dashboard: Pending approvals count:', pendingCount);
             
-                console.log('✅ Dashboard updated - Places:', places, 'Countries:', countries, 'Travelers:', finalTravelers.length, 'Posts:', publicPosts.length);
+                console.log('✅ Dashboard updated - Places:', places, 'Countries:', countries, 'Travelers:', finalTravelers.length, 'Posts:', publicPosts.length, 'Pending:', pendingCount);
                 
                 // Try to update contributors table, but don't fail if it errors
                 try {
@@ -5853,20 +5899,41 @@
             const tbody = document.getElementById('postsTable');
             tbody.innerHTML = '';
 
-            // Load posts from API
+            // Load posts from API - admin should see ALL posts (approved and unapproved)
             try {
                 if (typeof api !== 'undefined' && api.getPosts) {
+                    // Clear cache first to ensure fresh data
+                    if (api.clearCacheFor) {
+                        api.clearCacheFor('/posts');
+                    }
+                    
+                    // Don't pass approved filter - backend will return all posts for admins
                     posts = await api.getPosts({});
+                    console.log(`📊 Loaded ${posts.length} posts from API (all posts for admin)`);
+                    console.log(`📊 Posts breakdown: ${posts.filter(p => p.approved).length} approved, ${posts.filter(p => !p.approved).length} pending`);
+                    
+                    // Update localStorage with fresh data
+                    if (typeof safeSetToStorage === 'function') {
+                        safeSetToStorage('posts', posts);
+                    }
                 } else {
                     console.warn('API not available, using cached posts');
                 }
             } catch (error) {
                 console.error('Error loading posts from API:', error);
+                console.error('Error details:', error.message);
                 // Continue with existing posts array
             }
 
             // Filter out private posts - admin should not see them
+            // But show ALL public posts (both approved and unapproved)
             const publicPosts = posts.filter(p => !p.isPrivate);
+            const pendingPosts = publicPosts.filter(p => !p.approved);
+            console.log(`📊 Filtered to ${publicPosts.length} public posts (${pendingPosts.length} pending approval)`);
+            
+            if (pendingPosts.length > 0) {
+                console.log('📋 Pending posts:', pendingPosts.map(p => ({ id: p.id, place: p.place, author: p.author })));
+            }
             
             if (publicPosts.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 30px;">No posts available</td></tr>';
@@ -5980,6 +6047,12 @@
                     }
                     // Reload posts from API
                     posts = await api.getPosts({});
+                    
+                    // Remove from notification tracking if it exists
+                    if (window.notifiedPostIds) {
+                        window.notifiedPostIds.delete(id);
+                    }
+                    
                     showMessage('Post approved successfully! 🎉 Now visible on website.');
                 } else {
                     throw new Error('API not available');
@@ -6167,6 +6240,12 @@
                         api.clearCacheFor('posts');
                     }
                     posts = await api.getPosts({});
+                    
+                    // Remove from notification tracking if it exists
+                    if (window.notifiedPostIds) {
+                        window.notifiedPostIds.delete(postId);
+                    }
+                    
                 closeFullscreenImage();
                 loadPostsTable();
                 updateDashboard();
@@ -6450,30 +6529,71 @@
         }
 
         function openSectionModal() {
+            // Reset form for adding new section
+            document.getElementById('sectionId').value = '';
+            document.getElementById('sectionName').value = '';
+            document.getElementById('sectionDescription').value = '';
+            document.getElementById('sectionModalTitle').textContent = 'Add New Section';
+            document.getElementById('sectionSubmitBtn').textContent = 'Add Section';
             document.getElementById('sectionModal').style.display = 'block';
         }
         window.openSectionModal = openSectionModal;
 
         function closeSectionModal() {
             document.getElementById('sectionModal').style.display = 'none';
+            // Reset form
+            document.getElementById('sectionId').value = '';
+            document.getElementById('sectionName').value = '';
+            document.getElementById('sectionDescription').value = '';
         }
         window.closeSectionModal = closeSectionModal;
+
+        function editSection(id) {
+            const section = sections.find(s => s.id === id);
+            if (!section) {
+                showMessage('Section not found', 'error');
+                return;
+            }
+            
+            // Populate form with section data
+            document.getElementById('sectionId').value = section.id;
+            document.getElementById('sectionName').value = section.name;
+            document.getElementById('sectionDescription').value = section.description;
+            document.getElementById('sectionModalTitle').textContent = 'Edit Section';
+            document.getElementById('sectionSubmitBtn').textContent = 'Update Section';
+            document.getElementById('sectionModal').style.display = 'block';
+        }
+        window.editSection = editSection;
 
         function handleAddSection(event) {
             event.preventDefault();
             
-            const section = {
-                id: sections.length + 1,
-                name: document.getElementById('sectionName').value,
-                description: document.getElementById('sectionDescription').value,
-                count: 0
-            };
-
-            sections.push(section);
+            const id = document.getElementById('sectionId').value;
+            const name = document.getElementById('sectionName').value;
+            const description = document.getElementById('sectionDescription').value;
+            
+            if (id) {
+                // Update existing section
+                const sectionIndex = sections.findIndex(s => s.id === parseInt(id));
+                if (sectionIndex !== -1) {
+                    sections[sectionIndex].name = name;
+                    sections[sectionIndex].description = description;
+                    showMessage('Section updated successfully! 🎉');
+                }
+            } else {
+                // Add new section
+                const section = {
+                    id: sections.length > 0 ? Math.max(...sections.map(s => s.id)) + 1 : 1,
+                    name: name,
+                    description: description,
+                    count: 0
+                };
+                sections.push(section);
+                showMessage('Section added successfully! 🎉');
+            }
+            
             closeSectionModal();
             loadSectionsTable();
-            showMessage('Section added successfully! 🎉');
-
             event.target.reset();
         }
 
@@ -10845,7 +10965,7 @@
         window.editPair = window.editPair || editPair;
         
         // Sections
-        window.editSection = window.editSection || (typeof editSection !== 'undefined' ? editSection : function() { console.warn('editSection function not defined'); });
+        window.editSection = window.editSection || editSection;
         window.deleteSection = window.deleteSection || (typeof deleteSection !== 'undefined' ? deleteSection : function() { console.warn('deleteSection function not defined'); });
         
         // Check-in

@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
-const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
-// Get all hotels (public read)
-router.get('/', optionalAuth, async (req, res) => {
+// Get all hotels (protected read)
+router.get('/', authenticateToken, async (req, res) => {
     try {
         const hotels = await query('SELECT * FROM hotels ORDER BY name ASC');
         res.json(hotels);

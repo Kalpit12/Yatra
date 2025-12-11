@@ -3,7 +3,7 @@ const router = express.Router();
 const { query } = require('../config/database');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 // Admin login
 router.post('/login', async (req, res) => {
@@ -21,11 +21,17 @@ router.post('/login', async (req, res) => {
         
         // Verify password
         const isValid = await bcrypt.compare(password, admin.password_hash);
-        if (!isValid && password !== 'yatra@2024') { // Temporary fallback for existing admins
+        if (!isValid) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
         
         // Generate JWT token
+        const secret = process.env.JWT_SECRET;
+        if (!secret) {
+            console.error('Missing JWT_SECRET environment variable');
+            return res.status(500).json({ error: 'Server configuration error' });
+        }
+
         const token = jwt.sign(
             { 
                 id: admin.id, 
@@ -33,7 +39,7 @@ router.post('/login', async (req, res) => {
                 name: admin.name,
                 isAdmin: true 
             },
-            process.env.JWT_SECRET || 'change-this-secret-key',
+            secret,
             { expiresIn: '24h' }
         );
         
@@ -126,8 +132,8 @@ router.put('/profile', authenticateToken, requireAdmin, async (req, res) => {
     }
 });
 
-// Get tags (public read - tags are used in posts)
-router.get('/tags', optionalAuth, async (req, res) => {
+// Get tags (protected - require authentication)
+router.get('/tags', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const tags = await query('SELECT tag_name FROM tags ORDER BY tag_name ASC');
         res.json(tags.map(t => t.tag_name));

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
-const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 // Get all room pairs (protected - requires authentication)
 router.get('/', authenticateToken, async (req, res) => {
@@ -44,7 +44,6 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 });
 
-// Get single room pair
 // Get single room pair (protected - requires authentication)
 router.get('/:id', authenticateToken, async (req, res) => {
     try {
@@ -58,14 +57,20 @@ router.get('/:id', authenticateToken, async (req, res) => {
         }
         
         const travelers = await query(`
-            SELECT t.* FROM travelers t
+            SELECT 
+                t.id,
+                t.first_name,
+                t.last_name,
+                t.email,
+                t.image_url
+            FROM travelers t
             INNER JOIN room_pair_travelers rpt ON t.id = rpt.traveler_id
             WHERE rpt.room_pair_id = ?
         `, [req.params.id]);
         
         res.json({
             ...pair,
-            travelers: travelers
+            travelers
         });
     } catch (error) {
         console.error('Error fetching room pair:', error);

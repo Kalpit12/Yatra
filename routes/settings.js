@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
-const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
-// Get all settings (public read - some settings are public)
-router.get('/', optionalAuth, async (req, res) => {
+// Get all settings (protected - admin only)
+router.get('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const settings = await query('SELECT * FROM settings');
         
@@ -35,9 +35,8 @@ router.get('/', optionalAuth, async (req, res) => {
     }
 });
 
-// Get single setting
-// Get single setting (public read)
-router.get('/:key', optionalAuth, async (req, res) => {
+// Get single setting (protected - admin only)
+router.get('/:key', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const [setting] = await query(
             'SELECT * FROM settings WHERE setting_key = ?',

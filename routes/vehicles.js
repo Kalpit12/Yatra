@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
-const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
-// Get all vehicles (public read, but optional auth for additional info)
-router.get('/', optionalAuth, async (req, res) => {
+// Get all vehicles (protected read)
+router.get('/', authenticateToken, async (req, res) => {
     try {
         const vehicles = await query(`
             SELECT 
@@ -43,9 +43,8 @@ router.get('/', optionalAuth, async (req, res) => {
     }
 });
 
-// Get single vehicle
-// Get single vehicle (public read)
-router.get('/:id', optionalAuth, async (req, res) => {
+// Get single vehicle (protected read)
+router.get('/:id', authenticateToken, async (req, res) => {
     try {
         const [vehicle] = await query(
             'SELECT * FROM vehicles WHERE id = ?',
@@ -141,6 +140,11 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
 // Update vehicle (protected - requires admin)
 router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
+        const vehicleId = parseInt(req.params.id);
+        if (!Number.isFinite(vehicleId)) {
+            return res.status(400).json({ error: 'Invalid vehicle id' });
+        }
+
         const {
             name, type, capacity, regNo, groupLeaderEmail,
             groupLeaderName, driver, driverPhone, color, status,
@@ -171,7 +175,7 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
             return res.status(400).json({ error: 'No fields to update' });
         }
         
-        updateValues.push(req.params.id);
+        updateValues.push(vehicleId);
         
         await query(
             `UPDATE vehicles SET ${updateFields.join(', ')} WHERE id = ?`,
@@ -200,13 +204,35 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
 // Update vehicle location (protected - requires authentication, can be group leader or admin)
 router.post('/:id/location', authenticateToken, async (req, res) => {
     try {
+        const vehicleId = parseInt(req.params.id);
+        if (!Number.isFinite(vehicleId)) {
+            return res.status(400).json({ error: 'Invalid vehicle id' });
+        }
+
         const { lat, lng } = req.body;
-        
+
+        // Only admin or vehicle's group leader can update location
+        const [vehicle] = await query(
+            'SELECT group_leader_email FROM vehicles WHERE id = ?',
+            [vehicleId]
+        );
+
+        if (!vehicle) {
+            return res.status(404).json({ error: 'Vehicle not found' });
+        }
+
+        if (!req.user.isAdmin && vehicle.group_leader_email !== req.user.email) {
+            return res.status(403).json({
+                error: 'Access denied',
+                message: 'Only admin or the assigned group leader can update location'
+            });
+        }
+
         await query(`
             UPDATE vehicles 
             SET current_lat = ?, current_lng = ?, last_update = NOW()
             WHERE id = ?
-        `, [lat, lng, req.params.id]);
+        `, [lat, lng, vehicleId]);
         
         res.json({ message: 'Vehicle location updated successfully' });
     } catch (error) {

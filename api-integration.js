@@ -21,6 +21,28 @@ let API_CACHE_TIMESTAMP = {};
 const CACHE_DURATION = 5 * 60 * 1000;
 
 /**
+ * Get authentication token from localStorage
+ */
+function getAuthToken() {
+    try {
+        const adminData = localStorage.getItem('adminData');
+        if (adminData) {
+            const admin = JSON.parse(adminData);
+            return admin.token || null;
+        }
+        // Also check for traveler token
+        const travelerData = localStorage.getItem('travelerData');
+        if (travelerData) {
+            const traveler = JSON.parse(travelerData);
+            return traveler.token || null;
+        }
+    } catch (e) {
+        console.error('Error getting auth token:', e);
+    }
+    return null;
+}
+
+/**
  * API Helper Functions
  */
 const api = {
@@ -41,13 +63,21 @@ const api = {
             }
         }
         
+        // Get auth token and add to headers
+        const token = getAuthToken();
+        const headers = {
+            'Content-Type': 'application/json',
+            ...options.headers
+        };
+        
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        
         try {
             const response = await fetch(url, {
                 ...options,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...options.headers
-                }
+                headers: headers
             });
             
             if (!response.ok) {
