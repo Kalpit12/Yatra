@@ -1,0 +1,59 @@
+const mysql = require('mysql2/promise');
+require('dotenv').config();
+
+// Create connection pool for better performance
+const dbConfig = {
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'yatra_db',
+    port: process.env.DB_PORT || 3306,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0
+};
+
+// Security check: Warn if using default credentials in production
+if (process.env.NODE_ENV === 'production') {
+    if (!process.env.DB_PASSWORD || process.env.DB_PASSWORD === '') {
+        console.error('⚠️  SECURITY WARNING: DB_PASSWORD not set in production!');
+    }
+    if (process.env.DB_USER === 'root' || !process.env.DB_USER) {
+        console.warn('⚠️  SECURITY WARNING: Using default DB_USER (root) in production is not recommended!');
+    }
+}
+
+const pool = mysql.createPool(dbConfig);
+
+// Test database connection
+async function testConnection() {
+    try {
+        const connection = await pool.getConnection();
+        console.log('✅ Database connected successfully!');
+        connection.release();
+        return true;
+    } catch (error) {
+        console.error('❌ Database connection failed:', error.message);
+        return false;
+    }
+}
+
+// Execute query helper
+async function query(sql, params = []) {
+    try {
+        const [results] = await pool.execute(sql, params);
+        return results;
+    } catch (error) {
+        console.error('Database query error:', error);
+        throw error;
+    }
+}
+
+module.exports = {
+    pool,
+    query,
+    testConnection
+};
+
