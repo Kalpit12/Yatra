@@ -5,14 +5,14 @@
 
 // API Configuration
 // For local development: 'http://localhost:3000/api'
-// For production: Railway backend URL
+// Production: Railway backend URL
 const API_BASE = (() => {
     // Auto-detect: if running on localhost, use localhost API, otherwise use production API
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
         return 'http://localhost:3000/api';
     }
     // Production backend URL
-    return 'https://yatra-production.up.railway.app/api';
+    return 'https://mysql-production-8958.up.railway.app/api';
 })();
 let API_CACHE = {}; // Cache for offline support
 let API_CACHE_TIMESTAMP = {};
