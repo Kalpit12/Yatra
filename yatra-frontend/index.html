@@ -3012,6 +3012,47 @@
     <script src="api-integration.js"></script>
     
     <script>
+        // Lightweight lazy loading for images (safe for existing markup)
+        document.addEventListener('DOMContentLoaded', () => {
+            // Set loading="lazy" on all non-eager images
+            document.querySelectorAll('img:not([loading="eager"])').forEach(img => {
+                if (!img.getAttribute('loading')) {
+                    img.setAttribute('loading', 'lazy');
+                }
+            });
+
+            // IntersectionObserver for data-src / data-srcset
+            const lazyTargets = document.querySelectorAll('img[data-src], source[data-srcset]');
+            if (lazyTargets.length === 0) return;
+
+            const loadLazy = el => {
+                if (el.dataset.src) {
+                    el.src = el.dataset.src;
+                    el.removeAttribute('data-src');
+                }
+                if (el.dataset.srcset) {
+                    el.srcset = el.dataset.srcset;
+                    el.removeAttribute('data-srcset');
+                }
+            };
+
+            if (!('IntersectionObserver' in window)) {
+                lazyTargets.forEach(loadLazy);
+                return;
+            }
+
+            const io = new IntersectionObserver((entries, obs) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        loadLazy(entry.target);
+                        obs.unobserve(entry.target);
+                    }
+                });
+            }, { rootMargin: '200px 0px', threshold: 0.01 });
+
+            lazyTargets.forEach(el => io.observe(el));
+        });
+
         // ==================== SECURITY & UTILITY FUNCTIONS ====================
         
         // XSS Protection - Sanitize all user input
