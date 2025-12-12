@@ -32,10 +32,16 @@ const corsOptions = {
             'http://www.aksharjobs.com'
         ];
         
-        // In production, reject if no CORS_ORIGIN is set (unless aksharjobs.com is detected)
+        // Auto-allow Vercel domains
+        const isVercelDomain = origin && (
+            origin.includes('.vercel.app') || 
+            origin.includes('vercel.app')
+        );
+        
+        // In production, reject if no CORS_ORIGIN is set (unless aksharjobs.com or Vercel is detected)
         if (process.env.NODE_ENV === 'production' && allowedOrigins.length === 0) {
-            // Allow if origin is from aksharjobs.com
-            if (origin && aksharjobsDomains.some(domain => origin.startsWith(domain))) {
+            // Allow if origin is from aksharjobs.com or Vercel
+            if (origin && (aksharjobsDomains.some(domain => origin.startsWith(domain)) || isVercelDomain)) {
                 return callback(null, true);
             }
             console.error('⚠️  SECURITY WARNING: CORS_ORIGIN not set in production!');
@@ -50,8 +56,10 @@ const corsOptions = {
             return callback(null, true);
         }
         
-        // Check if origin is allowed (including aksharjobs.com)
-        if (allowedOrigins.includes(origin) || aksharjobsDomains.some(domain => origin.startsWith(domain))) {
+        // Check if origin is allowed (including aksharjobs.com and Vercel)
+        if (allowedOrigins.includes(origin) || 
+            aksharjobsDomains.some(domain => origin.startsWith(domain)) || 
+            isVercelDomain) {
             callback(null, true);
         } else {
             console.warn(`🚫 CORS blocked origin: ${origin}`);
