@@ -14,7 +14,7 @@ const API_BASE = (() => {
     }
 
     // Production backend URL on Railway
-    return 'https://mysql-production-8958.up.railway.app/api';
+    return 'https://yatrabackend-production.up.railway.app/api';
 })();
 let API_CACHE = {}; // Cache for offline support
 let API_CACHE_TIMESTAMP = {};
